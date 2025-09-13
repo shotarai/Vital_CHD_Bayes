@@ -55,11 +55,11 @@ COLUMNS = {
     "time": "chdyears",          # Time to CHD event or censoring (years)
     "age": "ageyr",              # Age in years
     "sex": "sex",                # Sex (binary)
-    "intervention": "vitdactive" # Vitamin D intervention (1=treatment, 0=control)
+    "intervention": "fishoilactive" # Fish oil (omega-3) intervention (1=treatment, 0=control)
 }
 
 # Covariates to include - intervention MUST be first for HR interpretation
-COVARIATES = ["vitdactive", "ageyr", "sex"]
+COVARIATES = ["fishoilactive", "ageyr", "sex", "vitdactive"]
 
 # Prior distribution specifications (existing 5 types)
 EXISTING_PRIORS = {
@@ -92,10 +92,10 @@ EXISTING_PRIORS = {
 
 # LLM prompt template for prior elicitation
 LLM_PROMPT = """You are assisting a Bayesian survival analysis for the VITAL trial context: a primary-prevention population of U.S. adults without prior CVD, randomized to vitamin D3 (2000 IU/day), omega-3 fatty acids (1 g/day), both, or placebo, with a median intervention of ~5.3 years. 
-Our current analysis focuses on the intervention effect on total coronary heart disease (CHD) as the primary endpoint, modeled with a Bayesian Weibull proportional hazards model. The coefficient of interest is the log-hazard ratio (log-HR) for the intervention effect on total CHD.
+Our current analysis focuses on the omega-3 fatty acids intervention effect on total coronary heart disease (CHD) as the primary endpoint, modeled with a Bayesian Weibull proportional hazards model. The coefficient of interest is the log-hazard ratio (log-HR) for the omega-3 intervention effect on total CHD.
 
 Task:
-Propose a Normal prior distribution for the log-HR (intervention vs. control) reflecting realistic prior clinical knowledge for CHD in primary prevention within this factorial-trial setting.
+Propose a Normal prior distribution for the log-HR (omega-3 intervention vs. control) reflecting realistic prior clinical knowledge for CHD in primary prevention within this factorial-trial setting.
 
 Important:
 - Output ONLY the prior parameters as JSON in this schema:
