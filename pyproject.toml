@@ -1,0 +1,41 @@
+[project]
+name = "vital-chd-bayes"
+version = "0.1.0"
+description = "Add your description here"
+authors = [
+    { name = "shotarai", email = "second.arasho@outlook.jp" }
+]
+dependencies = [
+    "numpy>=2.3.3",
+    "pandas>=2.3.2",
+    "scipy>=1.16.2",
+    "patsy>=1.0.1",
+    "pymc>=5.25.1",
+    "arviz>=0.22.0",
+    "matplotlib>=3.10.6",
+    "pydantic>=2.11.9",
+    "python-dotenv>=1.1.1",
+    "httpx>=0.28.1",
+    "orjson>=3.11.3",
+    "seaborn>=0.13.2",
+]
+readme = "README.md"
+requires-python = ">= 3.11"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.rye]
+managed = true
+dev-dependencies = [
+    "black>=25.1.0",
+    "isort>=6.0.1",
+    "ruff>=0.13.0",
+]
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/vital_chd_bayes"]
