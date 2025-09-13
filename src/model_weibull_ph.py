@@ -4,12 +4,13 @@ Weibull proportional hazards model implementation using PyMC.
 
 import numpy as np
 import pymc as pm
+import arviz as az
 import pytensor.tensor as pt
 from typing import Optional, Dict, Any
 import logging
 
-from .config import SEED, N_CHAINS, N_DRAWS, N_TUNE, TARGET_ACCEPT
-from .priors import PriorDistribution
+from config import SEED, N_CHAINS, N_DRAWS, N_TUNE, TARGET_ACCEPT
+from priors import PriorDistribution
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -85,7 +86,7 @@ def create_weibull_ph_model(
             # Combine intervention and other coefficients
             if intervention_idx == 0:
                 beta = pt.concatenate([
-                    log_hr_intervention.reshape(1),
+                    log_hr_intervention.reshape((1,)),
                     log_hr_other
                 ])
             else:
@@ -101,7 +102,7 @@ def create_weibull_ph_model(
                 beta = pt.stack(beta_list)
         else:
             # Only intervention effect
-            beta = log_hr_intervention.reshape(1)
+            beta = log_hr_intervention.reshape((1,))
         
         # Linear predictor
         eta = pt.dot(X, beta)
@@ -149,7 +150,7 @@ def create_weibull_ph_model(
 def sample_weibull_ph_model(
     model: pm.Model,
     random_seed: Optional[int] = None
-) -> pm.InferenceData:
+) -> az.InferenceData:
     """
     Sample from the Weibull PH model using NUTS.
     
@@ -158,7 +159,7 @@ def sample_weibull_ph_model(
         random_seed: Random seed for reproducibility
         
     Returns:
-        pm.InferenceData: Posterior samples and diagnostics
+        az.InferenceData: Posterior samples and diagnostics
     """
     if random_seed is None:
         random_seed = SEED
@@ -167,39 +168,48 @@ def sample_weibull_ph_model(
     logger.info(f"Warmup: {N_TUNE} draws, Target accept: {TARGET_ACCEPT}")
     
     with model:
-        # Initialize sampler
-        step = pm.NUTS(target_accept=TARGET_ACCEPT)
+        # Initialize sampler with higher max_treedepth to avoid warnings
+        step = pm.NUTS(
+            target_accept=TARGET_ACCEPT,
+            max_treedepth=12  # Increased from default 10
+        )
         
-        # Sample
+        # Use sequential sampling
         trace = pm.sample(
             draws=N_DRAWS,
             tune=N_TUNE,
             chains=N_CHAINS,
             step=step,
+            cores=1,  # Sequential sampling
             random_seed=random_seed,
             return_inferencedata=True,
-            compute_convergence_checks=True
+            compute_convergence_checks=N_CHAINS > 1,
+            progressbar=True
         )
     
     logger.info("MCMC sampling completed")
     
     # Log basic diagnostics
     summary = pm.summary(trace)
-    rhat_max = summary['r_hat'].max()
-    ess_min = summary['ess_bulk'].min()
     
-    logger.info(f"Max R-hat: {rhat_max:.4f}")
-    logger.info(f"Min ESS (bulk): {ess_min:.0f}")
-    
-    if rhat_max > 1.01:
-        logger.warning(f"Some R-hat values exceed 1.01 (max: {rhat_max:.4f})")
+    if N_CHAINS > 1:
+        rhat_max = summary['r_hat'].max()
+        logger.info(f"Max R-hat: {rhat_max:.4f}")
+        
+        if rhat_max > 1.01:
+            logger.warning(f"Some R-hat values exceed 1.01 (max: {rhat_max:.4f})")
+        else:
+            logger.info("All R-hat values ≤ 1.01 (good convergence)")
     else:
-        logger.info("All R-hat values ≤ 1.01 (good convergence)")
+        logger.info("Single chain sampling - convergence diagnostics not computed")
+    
+    ess_min = summary['ess_bulk'].min()
+    logger.info(f"Min ESS (bulk): {ess_min:.0f}")
     
     return trace
 
 
-def compute_log_likelihood(model: pm.Model, trace: pm.InferenceData) -> np.ndarray:
+def compute_log_likelihood(model: pm.Model, trace: az.InferenceData) -> np.ndarray:
     """
     Compute pointwise log-likelihood for model comparison.
     
@@ -216,13 +226,21 @@ def compute_log_likelihood(model: pm.Model, trace: pm.InferenceData) -> np.ndarr
         # Extract posterior samples
         posterior = trace.posterior
         
-        # Get parameter samples
-        k_samples = posterior['k'].values.flatten()
-        lambda_samples = posterior['lambda'].values.flatten()
-        log_hr_intervention_samples = posterior['log_hr_intervention'].values.flatten()
+        # Find variable names (they have model name prefix)
+        var_names = list(posterior.data_vars)
+        k_var = [v for v in var_names if v.endswith('::k')][0]
+        lambda_var = [v for v in var_names if v.endswith('::lambda')][0]
+        log_hr_var = [v for v in var_names if v.endswith('::log_hr_intervention')][0]
         
-        if 'log_hr_other' in posterior:
-            log_hr_other_samples = posterior['log_hr_other'].values
+        # Get parameter samples
+        k_samples = posterior[k_var].values.flatten()
+        lambda_samples = posterior[lambda_var].values.flatten()
+        log_hr_intervention_samples = posterior[log_hr_var].values.flatten()
+        
+        # Check for other HR variables
+        log_hr_other_var = [v for v in var_names if v.endswith('::log_hr_other')]
+        if log_hr_other_var:
+            log_hr_other_samples = posterior[log_hr_other_var[0]].values
             n_other = log_hr_other_samples.shape[-1]
             log_hr_other_samples = log_hr_other_samples.reshape(-1, n_other)
         else:
@@ -279,7 +297,7 @@ def compute_log_likelihood(model: pm.Model, trace: pm.InferenceData) -> np.ndarr
 if __name__ == "__main__":
     # Test model creation with dummy data
     try:
-        from .priors import get_existing_priors
+        from priors import get_existing_priors
         
         # Create dummy data
         np.random.seed(SEED)

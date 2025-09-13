@@ -19,7 +19,7 @@ import time
 sys.path.insert(0, str(Path(__file__).parent))
 
 from config import SEED, TABLES_DIR, FIGURES_DIR
-from io import get_processed_data
+from data_io import get_processed_data
 from priors import get_all_priors, save_priors_summary
 from inference import run_inference_all_priors, save_inference_results
 from predictive import compute_predictive_performance, save_predictive_results

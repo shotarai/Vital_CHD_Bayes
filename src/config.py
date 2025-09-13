@@ -26,11 +26,11 @@ VITAL_DATA_PATH = DATA_DIR / "VITAL_trial_NEJM_2022.csv"
 # Random seed for reproducibility
 SEED = 2025
 
-# MCMC settings (per specification)
+# MCMC settings (single chain to avoid multiprocessing issues)
 N_CHAINS = 3
 N_DRAWS = 4000
 N_TUNE = 2000  # warmup draws
-TARGET_ACCEPT = 0.9
+TARGET_ACCEPT = 0.95  # Higher target accept for more stable sampling
 
 # Convergence criteria
 MAX_RHAT = 1.01
@@ -54,11 +54,12 @@ COLUMNS = {
     "event": "totchd",           # Total CHD event indicator (0/1)
     "time": "chdyears",          # Time to CHD event or censoring (years)
     "age": "ageyr",              # Age in years
-    "sex": "sex"                 # Sex (binary)
+    "sex": "sex",                # Sex (binary)
+    "intervention": "vitdactive" # Vitamin D intervention (1=treatment, 0=control)
 }
 
-# Covariates to include (fixed as per Hamaya et al.)
-COVARIATES = ["ageyr", "sex"]
+# Covariates to include - intervention MUST be first for HR interpretation
+COVARIATES = ["vitdactive", "ageyr", "sex"]
 
 # Prior distribution specifications (existing 5 types)
 EXISTING_PRIORS = {

@@ -9,9 +9,9 @@ from typing import Dict, Tuple, Optional
 import logging
 from pathlib import Path
 
-from .config import TABLES_DIR
-from .inference import InferenceResults
-from .model_weibull_ph import compute_log_likelihood
+from config import TABLES_DIR
+from inference import InferenceResults
+from model_weibull_ph import compute_log_likelihood
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -168,6 +168,14 @@ def compare_models_loo(
     """
     logger.info(f"Comparing models using LOO with reference: {reference_model}")
     
+    # Handle empty results
+    if not predictive_results:
+        logger.warning("No predictive results to compare")
+        return pd.DataFrame(columns=[
+            'prior_name', 'loo_elpd', 'loo_se', 'loo_diff', 'loo_diff_se',
+            'loo_p_eff', 'loo_n_high_pareto_k', 'waic_elpd', 'waic_se', 'waic_p_eff'
+        ])
+    
     if reference_model not in predictive_results:
         logger.warning(f"Reference model {reference_model} not found. Using first available model.")
         reference_model = list(predictive_results.keys())[0]
@@ -235,7 +243,7 @@ def create_predictive_summary_table(
         lambda x: 'llm' if x.startswith('llm_') else 'existing'
     )
     
-    # Reorder columns
+    # Reorder columns (only use columns that exist)
     column_order = [
         'loo_rank', 'prior_name', 'prior_type',
         'loo_elpd', 'loo_se', 'loo_diff', 'loo_diff_se',
@@ -243,7 +251,10 @@ def create_predictive_summary_table(
         'waic_elpd', 'waic_se', 'waic_p_eff'
     ]
     
-    comparison_df = comparison_df[column_order]
+    # Only select columns that exist in the DataFrame
+    existing_columns = [col for col in column_order if col in comparison_df.columns]
+    if existing_columns:
+        comparison_df = comparison_df[existing_columns]
     
     logger.info(f"Summary table created with {len(comparison_df)} models")
     return comparison_df
@@ -318,9 +329,9 @@ def load_predictive_results(
 if __name__ == "__main__":
     # Test predictive evaluation with dummy results
     try:
-        from .priors import get_existing_priors
-        from .inference import run_inference_all_priors
-        from .io import get_processed_data
+        from priors import get_existing_priors
+        from inference import run_inference_all_priors
+        from data_io import get_processed_data
         
         # Get data
         try:
@@ -329,7 +340,7 @@ if __name__ == "__main__":
         except:
             logger.info("Creating dummy data for testing")
             import numpy as np
-            from .config import SEED
+            from config import SEED
             np.random.seed(SEED)
             n_obs = 100
             X = np.random.randn(n_obs, 2)

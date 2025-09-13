@@ -9,11 +9,12 @@ from typing import Dict, Tuple, Optional, Any
 from dataclasses import dataclass
 import orjson
 
-from .config import (
+from config import (
     EXISTING_PRIORS, 
     LLM_MODELS, 
     LLM_TEMPERATURE, 
     LLM_PROMPT, 
+    TABLES_DIR,
     API_KEY
 )
 
@@ -93,7 +94,7 @@ def query_llm_prior(model_name: str, timeout: int = 30) -> Optional[Tuple[float,
     try:
         with httpx.Client(timeout=timeout) as client:
             response = client.post(
-                "https://api.openai.com/v1/chat/completions",  # Placeholder URL
+                "https://chat-ai.academiccloud.de/v1/chat/completions",
                 headers=headers,
                 json=payload
             )

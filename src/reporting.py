@@ -12,8 +12,8 @@ from typing import Dict, List, Optional, Tuple
 import logging
 from pathlib import Path
 
-from .config import FIGURES_DIR, TABLES_DIR
-from .inference import InferenceResults
+from config import FIGURES_DIR, TABLES_DIR
+from inference import InferenceResults
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -63,7 +63,10 @@ def plot_hr_comparison(
     # Extract HR summaries
     hr_data = []
     for prior_name, result in inference_results.items():
-        hr_samples = result.trace.posterior['hr_intervention'].values.flatten()
+        # Find HR variable with model prefix
+        var_names = list(result.trace.posterior.data_vars)
+        hr_var = [v for v in var_names if v.endswith('::hr_intervention')][0]
+        hr_samples = result.trace.posterior[hr_var].values.flatten()
         hr_data.append({
             'prior_name': prior_name,
             'hr_mean': np.mean(hr_samples),
@@ -311,8 +314,10 @@ def plot_prior_posterior_comparison(
     for i, (prior_name, result) in enumerate(inference_results.items()):
         ax = axes[i]
         
-        # Get posterior samples
-        posterior_samples = result.trace.posterior['log_hr_intervention'].values.flatten()
+        # Get posterior samples (find variable with model prefix)
+        var_names = list(result.trace.posterior.data_vars)
+        log_hr_var = [v for v in var_names if v.endswith('::log_hr_intervention')][0]
+        posterior_samples = result.trace.posterior[log_hr_var].values.flatten()
         
         # Plot posterior distribution
         ax.hist(posterior_samples, bins=30, density=True, alpha=0.7, 
@@ -548,7 +553,7 @@ if __name__ == "__main__":
     # Test plotting functions with dummy data
     try:
         import numpy as np
-        from .config import SEED
+        from config import SEED
         
         logger.info("Testing plotting functions with dummy data")
         

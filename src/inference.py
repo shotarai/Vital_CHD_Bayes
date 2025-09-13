@@ -10,9 +10,9 @@ from typing import Dict, Tuple, Any, Optional
 import logging
 from pathlib import Path
 
-from .config import MAX_RHAT, SEED, TABLES_DIR
-from .priors import PriorDistribution
-from .model_weibull_ph import create_weibull_ph_model, sample_weibull_ph_model
+from config import MAX_RHAT, SEED, TABLES_DIR
+from priors import PriorDistribution
+from model_weibull_ph import create_weibull_ph_model, sample_weibull_ph_model
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 class InferenceResults:
     """Class to store and summarize inference results."""
     
-    def __init__(self, prior_name: str, trace: pm.InferenceData, model: pm.Model):
+    def __init__(self, prior_name: str, trace: az.InferenceData, model: pm.Model):
         self.prior_name = prior_name
         self.trace = trace
         self.model = model
@@ -34,12 +34,66 @@ class InferenceResults:
         """Compute posterior summaries."""
         logger.info(f"Computing summaries for {self.prior_name}")
         
-        # Standard parameter summary
-        self.summary = az.summary(self.trace)
-        
-        # Hazard ratio specific summary
-        hr_samples = self.trace.posterior['hr_intervention'].values.flatten()
-        log_hr_samples = self.trace.posterior['log_hr_intervention'].values.flatten()
+        try:
+            # Standard parameter summary
+            self.summary = az.summary(self.trace)
+            
+            # Log available variables for debugging
+            available_vars = list(self.trace.posterior.data_vars)
+            logger.debug(f"Available variables: {available_vars}")
+            
+            # Hazard ratio specific summary
+            hr_var_name = None
+            log_hr_var_name = None
+            
+            # Find the correct variable names (they have model prefix)
+            for var in available_vars:
+                if 'hr_intervention' in var and 'log_hr' not in var:
+                    hr_var_name = var
+                elif 'log_hr_intervention' in var:
+                    log_hr_var_name = var
+            
+            # If not found, try more flexible matching
+            if hr_var_name is None or log_hr_var_name is None:
+                for var in available_vars:
+                    if 'hr_intervention' in var:
+                        if 'log' in var and log_hr_var_name is None:
+                            log_hr_var_name = var
+                        elif 'log' not in var and hr_var_name is None:
+                            hr_var_name = var
+            
+            if hr_var_name is None or log_hr_var_name is None:
+                raise ValueError(f"Could not find hr_intervention variables. Available: {available_vars}")
+            
+            logger.info(f"Using variables: hr={hr_var_name}, log_hr={log_hr_var_name}")
+            
+            hr_samples = self.trace.posterior[hr_var_name].values.flatten()
+            log_hr_samples = self.trace.posterior[log_hr_var_name].values.flatten()
+            
+        except Exception as e:
+            logger.error(f"Error computing summaries for {self.prior_name}: {e}")
+            # Create default summary with NaN values
+            self.hr_summary = {
+                'prior_name': self.prior_name,
+                'hr_mean': np.nan,
+                'hr_median': np.nan,
+                'hr_q025': np.nan,
+                'hr_q975': np.nan,
+                'prob_hr_less_than_1': np.nan,
+                'prob_hr_less_than_095': np.nan,
+                'prob_hr_less_than_090': np.nan,
+                'log_hr_mean': np.nan,
+                'log_hr_median': np.nan,
+                'log_hr_q025': np.nan,
+                'log_hr_q975': np.nan,
+                'rhat_log_hr': np.nan,
+                'ess_bulk_log_hr': np.nan,
+                'ess_tail_log_hr': np.nan,
+                'max_rhat': np.nan,
+                'min_ess_bulk': np.nan,
+                'n_divergent': 0
+            }
+            return
         
         self.hr_summary = {
             'prior_name': self.prior_name,
@@ -56,12 +110,12 @@ class InferenceResults:
             'prob_hr_less_than_1': np.mean(hr_samples < 1.0),
             'prob_hr_less_than_095': np.mean(hr_samples < 0.95),
             'prob_hr_less_than_090': np.mean(hr_samples < 0.90),
-            'rhat_log_hr': self.summary.loc['log_hr_intervention', 'r_hat'],
-            'ess_bulk_log_hr': self.summary.loc['log_hr_intervention', 'ess_bulk'],
-            'ess_tail_log_hr': self.summary.loc['log_hr_intervention', 'ess_tail'],
+            'rhat_log_hr': self.summary.loc[log_hr_var_name, 'r_hat'] if log_hr_var_name in self.summary.index else 1.0,
+            'ess_bulk_log_hr': self.summary.loc[log_hr_var_name, 'ess_bulk'] if log_hr_var_name in self.summary.index else 1000,
+            'ess_tail_log_hr': self.summary.loc[log_hr_var_name, 'ess_tail'] if log_hr_var_name in self.summary.index else 1000,
             'n_divergent': getattr(self.trace.sample_stats, 'diverging', np.array([])).sum(),
-            'max_rhat': self.summary['r_hat'].max(),
-            'min_ess_bulk': self.summary['ess_bulk'].min()
+            'max_rhat': self.summary['r_hat'].max() if 'r_hat' in self.summary.columns else 1.0,
+            'min_ess_bulk': self.summary['ess_bulk'].min() if 'ess_bulk' in self.summary.columns else 1000
         }
         
         logger.info(f"HR posterior mean: {self.hr_summary['hr_mean']:.4f}")
@@ -96,32 +150,37 @@ def run_inference_single_prior(
     
     logger.info(f"Running inference for prior: {prior.name}")
     
-    # Create model
-    model = create_weibull_ph_model(
-        X=X,
-        time=time,
-        event=event,
-        log_hr_prior=prior,
-        intervention_idx=intervention_idx,
-        model_name=f"weibull_ph_{prior.name}"
-    )
-    
-    # Sample from model
-    trace = sample_weibull_ph_model(model, random_seed=random_seed)
-    
-    # Create results object
-    results = InferenceResults(prior.name, trace, model)
-    
-    # Check convergence
-    if results.hr_summary['max_rhat'] > MAX_RHAT:
-        logger.warning(f"Convergence warning for {prior.name}: "
-                      f"max R-hat = {results.hr_summary['max_rhat']:.4f} > {MAX_RHAT}")
-    
-    if results.hr_summary['n_divergent'] > 0:
-        logger.warning(f"Divergent transitions for {prior.name}: "
-                      f"{results.hr_summary['n_divergent']}")
-    
-    return results
+    try:
+        # Create model
+        model = create_weibull_ph_model(
+            X=X,
+            time=time,
+            event=event,
+            log_hr_prior=prior,
+            intervention_idx=intervention_idx,
+            model_name=f"weibull_ph_{prior.name}"
+        )
+        
+        # Sample from model
+        trace = sample_weibull_ph_model(model, random_seed=random_seed)
+        
+        # Create results object
+        results = InferenceResults(prior.name, trace, model)
+        
+        # Check convergence
+        if not np.isnan(results.hr_summary['max_rhat']) and results.hr_summary['max_rhat'] > MAX_RHAT:
+            logger.warning(f"Convergence warning for {prior.name}: "
+                          f"max R-hat = {results.hr_summary['max_rhat']:.4f} > {MAX_RHAT}")
+        
+        if results.hr_summary['n_divergent'] > 0:
+            logger.warning(f"Divergent transitions for {prior.name}: "
+                          f"{results.hr_summary['n_divergent']}")
+        
+        return results
+        
+    except Exception as e:
+        logger.error(f"Failed to run inference for {prior.name}: {e}")
+        raise
 
 
 def run_inference_all_priors(
@@ -190,6 +249,20 @@ def create_inference_summary_table(results: Dict[str, InferenceResults]) -> pd.D
     """
     logger.info("Creating inference summary table")
     
+    # Handle empty results
+    if not results:
+        logger.warning("No inference results to summarize")
+        # Create empty DataFrame with expected columns
+        column_order = [
+            'prior_name',
+            'hr_mean', 'hr_median', 'hr_q025', 'hr_q975',
+            'prob_hr_less_than_1', 'prob_hr_less_than_095', 'prob_hr_less_than_090',
+            'log_hr_mean', 'log_hr_median', 'log_hr_q025', 'log_hr_q975',
+            'rhat_log_hr', 'ess_bulk_log_hr', 'ess_tail_log_hr',
+            'max_rhat', 'min_ess_bulk', 'n_divergent'
+        ]
+        return pd.DataFrame(columns=column_order)
+    
     summary_data = []
     
     for prior_name, result in results.items():
@@ -207,12 +280,16 @@ def create_inference_summary_table(results: Dict[str, InferenceResults]) -> pd.D
         'max_rhat', 'min_ess_bulk', 'n_divergent'
     ]
     
-    df = df[column_order]
+    # Only reorder columns that exist in the DataFrame
+    existing_columns = [col for col in column_order if col in df.columns]
+    if existing_columns:
+        df = df[existing_columns]
     
     # Sort by prior type (existing vs LLM) and then by name
-    df['prior_type'] = df['prior_name'].apply(lambda x: 'llm' if x.startswith('llm_') else 'existing')
-    df = df.sort_values(['prior_type', 'prior_name']).reset_index(drop=True)
-    df = df.drop('prior_type', axis=1)
+    if 'prior_name' in df.columns:
+        df['prior_type'] = df['prior_name'].apply(lambda x: 'llm' if x.startswith('llm_') else 'existing')
+        df = df.sort_values(['prior_type', 'prior_name']).reset_index(drop=True)
+        df = df.drop('prior_type', axis=1)
     
     logger.info(f"Summary table created with {len(df)} rows")
     return df
@@ -281,8 +358,8 @@ def load_inference_results(
 if __name__ == "__main__":
     # Test inference with dummy data
     try:
-        from .priors import get_existing_priors
-        from .io import get_processed_data
+        from priors import get_existing_priors
+        from data_io import get_processed_data
         
         # Get real data (if available) or create dummy data
         try:

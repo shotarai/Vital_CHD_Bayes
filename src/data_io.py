@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Tuple, Optional
 import logging
 
-from .config import VITAL_DATA_PATH, COLUMNS, COVARIATES
+from config import VITAL_DATA_PATH, COLUMNS, COVARIATES
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
