@@ -507,6 +507,34 @@ def create_summary_report(
     logger.info(f"Saved summary report to {output_path}")
 
 
+def generate_predictive_plots(
+    predictive_summary: pd.DataFrame,
+    output_dir: Optional[Path] = None
+) -> None:
+    """
+    Generate plots for predictive evaluation only.
+    
+    Args:
+        predictive_summary: Predictive summary DataFrame
+        output_dir: Directory to save plots (default: FIGURES_DIR)
+    """
+    if output_dir is None:
+        output_dir = FIGURES_DIR
+    
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    logger.info(f"Generating predictive plots in {output_dir}")
+    
+    # LOO comparison plot
+    plot_loo_comparison(
+        predictive_summary, 
+        output_dir / "fig_LOO_by_prior.png"
+    )
+    
+    logger.info("Predictive plots generated successfully")
+
+
 def generate_all_plots(
     inference_results: Dict[str, InferenceResults],
     predictive_summary: pd.DataFrame,

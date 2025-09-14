@@ -297,7 +297,8 @@ def create_inference_summary_table(results: Dict[str, InferenceResults]) -> pd.D
 
 def save_inference_results(
     results: Dict[str, InferenceResults],
-    output_dir: Optional[Path] = None
+    output_dir: Optional[Path] = None,
+    save_traces: bool = True
 ) -> None:
     """
     Save inference results to files.
@@ -305,6 +306,7 @@ def save_inference_results(
     Args:
         results: Dictionary of inference results
         output_dir: Directory to save results (default: TABLES_DIR)
+        save_traces: Whether to save full traces for predictive evaluation
     """
     if output_dir is None:
         output_dir = TABLES_DIR
@@ -325,8 +327,53 @@ def save_inference_results(
         trace_summary_path = output_dir / f"trace_summary_{prior_name}.csv"
         result.summary.to_csv(trace_summary_path)
         logger.info(f"Saved trace summary for {prior_name} to {trace_summary_path}")
+        
+        # Save full traces if requested (for predictive evaluation)
+        if save_traces:
+            try:
+                trace_path = output_dir / f"trace_{prior_name}.nc"
+                result.trace.to_netcdf(trace_path)
+                logger.info(f"Saved full trace for {prior_name} to {trace_path}")
+            except Exception as e:
+                logger.warning(f"Could not save trace for {prior_name}: {e}")
     
     logger.info("All inference results saved successfully")
+
+
+def load_inference_traces(
+    results_dir: Optional[Path] = None
+) -> Dict[str, az.InferenceData]:
+    """
+    Load previously saved inference traces.
+    
+    Args:
+        results_dir: Directory containing results (default: TABLES_DIR)
+        
+    Returns:
+        Dict[str, az.InferenceData]: Dictionary of loaded traces
+    """
+    if results_dir is None:
+        results_dir = TABLES_DIR
+    
+    results_dir = Path(results_dir)
+    logger.info(f"Loading inference traces from {results_dir}")
+    
+    traces = {}
+    trace_files = list(results_dir.glob("trace_*.nc"))
+    
+    for trace_file in trace_files:
+        # Extract prior name from filename
+        prior_name = trace_file.stem.replace("trace_", "")
+        
+        try:
+            trace = az.from_netcdf(trace_file)
+            traces[prior_name] = trace
+            logger.info(f"Loaded trace for {prior_name}")
+        except Exception as e:
+            logger.warning(f"Could not load trace for {prior_name}: {e}")
+    
+    logger.info(f"Successfully loaded {len(traces)} traces")
+    return traces
 
 
 def load_inference_results(
