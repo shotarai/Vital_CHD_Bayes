@@ -18,6 +18,7 @@ dependencies = [
     "httpx>=0.28.1",
     "orjson>=3.11.3",
     "seaborn>=0.13.2",
+    "scikit-learn>=1.7.2",
 ]
 readme = "README.md"
 requires-python = ">= 3.11"

@@ -95,9 +95,10 @@ LLM_PROMPT = """You are assisting a Bayesian survival analysis for the VITAL tri
 Our current analysis focuses on the omega-3 fatty acids intervention effect on total coronary heart disease (CHD) as the primary endpoint, modeled with a Bayesian Weibull proportional hazards model. The coefficient of interest is the log-hazard ratio (log-HR) for the omega-3 intervention effect on total CHD.
 
 Task:
-Propose a Normal prior distribution for the log-HR (omega-3 intervention vs. control) reflecting realistic prior clinical knowledge for CHD in primary prevention within this factorial-trial setting.
+Propose an **expert-informed** Normal prior distribution for the log-HR (omega-3 intervention vs. control) reflecting clinical knowledge from prior studies of CHD in primary prevention within this factorial-trial setting.
 
 Important:
 - Output ONLY the prior parameters as JSON in this schema:
   {"mu": <float>, "sigma": <float>}
-- Do not include explanations or units; just the numeric parameters."""
+- Do not include explanations or units; just the numeric parameters.
+- Base the parameters on evidence from prior RCTs and meta-analyses; avoid vague, overly wide, or null-centered priors that do not reflect clinical knowledge."""
