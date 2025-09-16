@@ -1,207 +1,189 @@
 # VITAL-CHD Bayesian Re-analysis
 
-このプロジェクトは、VITAL試験のCHD（冠動脈心疾患）データを用いたベイズ生存解析の実装です。LLM生成事前分布と従来の事前分布を比較し、推測・予測の両面での性能を評価します。
+This project implements Bayesian survival analysis using the VITAL trial CHD (coronary heart disease) data. It compares **LLM-generated priors** with traditional priors, focusing on their stability and robustness under reduced data conditions.
 
-## プロジェクト概要
+## Project Overview
 
-### 目的
-- **VITAL試験**の総冠動脈疾患（`totchd`）を主要アウトカムとする
-- **Weibull比例ハザード（PH）**モデルによるベイズ解析
-- **LLM生成事前分布**（Llama 3.3 70B / MedGemma 27B）と**既存の5種事前分布**の比較
-- **推測・予測**両面での性能評価
+### Objectives
+- Analyze **total CHD (`totchd`)** as the primary outcome of the **VITAL trial**  
+- Apply a **Weibull proportional hazards (PH)** Bayesian survival model  
+- Compare **LLM-generated priors** (Llama 3.3 70B / MedGemma 27B) with **five traditional priors**  
+- Evaluate **inference** (HR, P(HR<1)) and **predictive robustness** (C-index, IBS) across reduced training sizes  
 
-### データ
-- **入力ファイル**: `data/VITAL_trial_NEJM_2022.csv`
-- **主要アウトカム**: 
-  - イベント指標: `totchd`（総CHD: 0/1）
-  - 追跡時間: `chdyears`（CHD発症/打ち切りまでの年数）
-- **共変量**: `ageyr`, `sex`（Hamayaらと同じ設定）
+### Data
+- **Input file**: `data/VITAL_trial_NEJM_2022.csv`
+- **Primary outcome**:  
+  - Event indicator: `totchd` (total CHD: 0/1)  
+  - Follow-up time: `chdyears` (years to CHD event or censoring)  
+- **Covariates**: `ageyr`, `sex` (same setting as Hamaya et al.)  
 
-### 解析手法
-- **モデル**: ベイズWeibull比例ハザード
-- **実装**: Python + PyMC（HMC/NUTS）
-- **設定**: 3 chains, 4,000 draws（2,000 warmup）, target_accept ≥ 0.9
-- **評価**: 推測（HR, P(HR<1)）+ 予測（PSIS-LOO, WAIC）
+### Methods
+- **Model**: Bayesian Weibull proportional hazards  
+- **Implementation**: Python + PyMC (HMC/NUTS)  
+- **Settings**: 3 chains, 4,000 draws (2,000 warmup), target_accept ≥ 0.9  
+- **Evaluation**: Inference (HR, P(HR<1)) + predictive robustness under small-n  
 
-## 環境セットアップ
+## Environment Setup
 
-### 前提条件
+### Requirements
 - Python 3.11+
-- [rye](https://rye-up.com/) パッケージマネージャ
+- [rye](https://rye-up.com/) package manager
 
-### インストール
+### Installation
 
 ```bash
-# プロジェクトルートに移動
 cd vital_chd_bayes
-
-# 依存関係をインストール
 rye sync
-```
+````
 
-### 環境変数設定
+### Environment Variables
 
-`.env`ファイルを編集してAPI keyを設定：
+Configure API key in `.env`:
 
 ```bash
 API_KEY=your_actual_api_key_here
 ```
 
-## プロジェクト構造
+## Project Structure
 
 ```
 vital_chd_bayes/
 ├─ data/
-│  └─ VITAL_trial_NEJM_2022.csv     # VITAL試験データ
+│  └─ VITAL_trial_NEJM_2022.csv
 ├─ src/
-│  ├─ config.py                     # 設定・定数
-│  ├─ io.py                         # データ読み込み・前処理
-│  ├─ priors.py                     # 事前分布定義・LLM取得
-│  ├─ model_weibull_ph.py           # Weibull-PHモデル実装
-│  ├─ inference.py                  # MCMC実行・推測要約
-│  ├─ predictive.py                 # 予測性能評価
-│  ├─ reporting.py                  # 可視化・レポート生成
-│  └─ run_experiments.py            # 実験オーケストレーション
+│  ├─ config.py
+│  ├─ io.py
+│  ├─ priors.py
+│  ├─ model_weibull_ph.py
+│  ├─ inference.py
+│  ├─ predictive.py
+│  ├─ reporting.py
+│  └─ run_experiments.py
 ├─ results/
-│  ├─ tables/                       # CSV出力
-│  └─ figures/                      # PNG図表
-├─ .env                             # API設定
-├─ README.md                        # 本ファイル
-└─ pyproject.toml                   # rye設定
+│  ├─ tables/
+│  └─ figures/
+├─ .env
+├─ README.md
+└─ pyproject.toml
 ```
 
-## 実行方法
+## Execution
 
-### 完全実験の実行
+### Full Experiment
 
 ```bash
-# プロジェクトルートで実行
 rye run python -m src.run_experiments
 ```
 
-### 個別モジュールのテスト
+### Module Tests
 
 ```bash
-# データ読み込みテスト
 rye run python -m src.io
-
-# 事前分布取得テスト（API keyが必要）
 rye run python -m src.priors
-
-# モデル作成テスト
 rye run python -m src.model_weibull_ph
 ```
 
-## 事前分布仕様
+## Prior Specifications
 
-### 既存の5種類（log-HR ~ Normal(μ, σ²)）
+### Five Existing Priors (log-HR \~ Normal(μ, σ²))
 
-| 名前 | μ | σ | 説明 |
-|------|---|---|------|
-| **Noninformative** | 0.0 | 10.0 | 非情報事前、データ主導 |
-| **Primary informed** | -0.072 | 0.037 | メタ解析による一次予防効果 |
-| **Weakly** | -0.072 | 0.055 | Primary の1.5倍の不確実性 |
-| **Strong** | -0.072 | 0.018 | Primary の0.5倍の不確実性 |
-| **Skeptical** | 0.0 | 0.121 | 効果に懐疑的（効果<5%） |
+| Name                 | μ      | σ     | Description                  |
+| -------------------- | ------ | ----- | ---------------------------- |
+| **Noninformative**   | 0.0    | 10.0  | Data-driven, flat prior      |
+| **Primary informed** | -0.072 | 0.037 | Meta-analysis based          |
+| **Weakly**           | -0.072 | 0.055 | 1.5 × wider uncertainty      |
+| **Strong**           | -0.072 | 0.018 | 0.5 × tighter uncertainty    |
+| **Skeptical**        | 0.0    | 0.121 | Effect < 5%, skeptical prior |
 
-### LLM生成事前分布
+### LLM-generated Priors
 
-- **モデル**: 
-  - `llama-3.3-70b-instruct`（汎用）
-  - `medgemma-27b-it`（医療特化）
-- **温度**: 0（再現性のため）
-- **出力形式**: JSON `{"mu": <float>, "sigma": <float>}`
+* **Models**:
 
-## 出力ファイル
+  * `llama-3.3-70b-instruct` (general-purpose)
+  * `medgemma-27b-it` (medical domain)
+* **Temperature**: 0 (deterministic output)
+* **Format**: JSON `{"mu": <float>, "sigma": <float>}`
 
-### 表（results/tables/）
-- `inference_summary.csv`: 推測結果要約
-- `predictive_summary.csv`: 予測性能要約
-- `priors_summary.csv`: 使用した事前分布一覧
-- `summary_report.txt`: 総合レポート
+## Output Files
 
-### 図（results/figures/）
-- `fig_HR_by_prior.png`: 事前分布別HR比較
-- `fig_LOO_by_prior.png`: LOO予測性能比較
-- `fig_prior_posterior_comparison.png`: 事前・事後分布比較
+### Tables (`results/tables/`)
 
-## 主要な評価指標
+* `inference_summary.csv`: Inference results
+* `predictive_summary.csv`: Predictive robustness results
+* `priors_summary.csv`: Priors used
+* `summary_report.txt`: Integrated report
 
-### 推測（Inference）
-- **HR**: ハザード比（exp(log-HR)）の事後分布
-- **95% CrI**: 95%信用区間
-- **P(HR < 1)**: 保護効果の確率
-- **収束診断**: R-hat ≤ 1.01, ESS
+### Figures (`results/figures/`)
 
-### 予測（Predictive）
-- **PSIS-LOO**: 交差検証による予測性能
-- **WAIC**: 情報規準
-- **ΔLOO**: 基準モデル（Primary informed）からの差
+* `fig_HR_by_prior.png`: HR comparison by prior
+* `fig_learning_curves.png`: C-index and IBS vs. training size
+* `fig_prior_posterior_comparison.png`: Prior vs posterior
 
-## 評価の観点
+## Evaluation Metrics
 
-LLM事前分布が以下を示す場合「有用」と評価：
+### Inference
 
-1. **CrI幅の縮小** - より精密な推定
-2. **P(HR<1)の向上** - 保護効果の確信度向上
-3. **LOOの改善** - より良い予測性能（ΔLOO > 0）
+* **HR**: Posterior hazard ratio (exp(log-HR))
+* **95% CrI**: Credible interval
+* **P(HR < 1)**: Probability of protective effect
+* **Convergence**: R-hat ≤ 1.01, ESS
 
-## トラブルシューティング
+### Predictive Robustness (Small-n Sensitivity)
 
-### よくある問題
+* **C-index (Uno’s C)**: Discrimination under censoring
+* **IBS (Integrated Brier Score)**: Calibration across follow-up
+* **Learning curves**: Performance at training fractions (20%, 40%, 60%, 80%, 100%)
+* **Robustness criterion**: Priors that maintain stable C-index and IBS even with reduced n
 
-1. **API key エラー**
-   ```
-   ValueError: API_KEY not found in environment variables
-   ```
-   → `.env`ファイルでAPI_KEYを正しく設定してください
+## Evaluation Criteria
 
-2. **収束エラー**
-   ```
-   Warning: Some R-hat values exceed 1.01
-   ```
-   → MCMC設定（chains, draws, target_accept）を調整してください
+An LLM prior is considered **useful** if it demonstrates:
 
-3. **メモリエラー**
-   → サンプル数を減らすか、より大きなメモリの環境で実行してください
+1. **Stable HR estimates** with narrower CrIs
+2. **Higher probability of HR < 1** (inference strength)
+3. **Less degradation** in C-index and IBS at reduced sample sizes
 
-### 依存関係の問題
+## Troubleshooting
+
+### Common Issues
+
+1. **Missing API key** → Configure `.env`
+2. **Convergence warnings** → Adjust MCMC settings
+3. **Memory errors** → Reduce draws or increase memory
+
+### Dependency Issues
 
 ```bash
-# パッケージの再インストール
 rye sync --force
-
-# 特定パッケージの追加
 rye add package_name
 ```
 
-## 開発情報
+## Development Notes
 
-### コード品質
+### Code Quality
 
 ```bash
-# コードフォーマット
 rye run black src/
 rye run isort src/
-
-# リント
 rye run ruff check src/
 ```
 
-### ログ
+### Logs
 
-実行ログは `results/tables/experiment.log` に保存されます。
+Execution logs saved in `results/tables/experiment.log`
 
-## 参考文献
+## References
 
-- Hamaya et al. のVITAL試験ベイズ解析手法
-- PyMC documentation
-- ArviZ documentation for model comparison
+* Hamaya et al. Bayesian analysis of VITAL trial
+* PyMC documentation
+* ArviZ model comparison documentation
+* Uno et al. (C-index under censoring)
+* Graf et al., Gerds & Schumacher (IBS consistency)
 
-## ライセンス
+## License
 
-このプロジェクトは研究目的で作成されています。
+This project is for research purposes only.
 
-## 連絡先
+## Contact
 
-プロジェクトに関する質問や問題は、Issueを作成してください。
+Please open an issue for questions or problems.
